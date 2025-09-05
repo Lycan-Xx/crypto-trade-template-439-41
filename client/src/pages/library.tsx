@@ -184,9 +184,12 @@ export default function Library() {
   if (showTest && (startingTestData || currentResult)) {
     const testData = startingTestData || currentResult;
     if (testData) {
+      // Handle different title property names based on type
+      const title = 'testTitle' in testData ? testData.testTitle : testData.title;
+      
       return (
         <TestTaking
-          testTitle={testData.testTitle || testData.title}
+          testTitle={title}
           questions={testData.questions}
           timeLimit={testTimeLimit}
           onSubmit={handleTestSubmit}
