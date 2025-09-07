@@ -1,5 +1,6 @@
+import { supabase } from '@/lib/supabase';
 
-interface GenerateQuestionsOptions {
+export interface GenerateQuestionsOptions {
   content: string;
   difficulty: 'easy' | 'medium' | 'hard';
   questionCount: number;
@@ -8,150 +9,200 @@ interface GenerateQuestionsOptions {
   focus?: string;
 }
 
-interface GeneratedQuestion {
+export interface ProcessNotesOptions {
+  content?: string;
+  fileData?: string;
+  fileName?: string;
+  fileType?: string;
+}
+
+export interface ProcessedContent {
+  text: string;
+  title: string;
+  topics: string[];
+  summary: string;
+  wordCount: number;
+  estimatedReadingTime: number;
+}
+
+export interface GeneratedQuestion {
   id: string;
-  type: 'multiple-choice' | 'true-false' | 'short-answer' | 'essay';
+  type: 'multiple-choice' | 'true-false';
   question: string;
   options?: string[];
-  correctAnswer: string | string[];
-  explanation?: string;
+  correctAnswer: string;
+  explanation: string;
   difficulty: 'easy' | 'medium' | 'hard';
   points: number;
   sourceText?: string;
   confidence?: number;
 }
 
-interface AIResponse {
+export interface AIResponse {
   questions: GeneratedQuestion[];
   metadata: {
     totalQuestions: number;
     estimatedTime: number;
     difficulty: string;
     subject?: string;
-    contentHash?: string;
+    contentHash: string;
   };
+  warning?: string;
 }
 
 class AIService {
-  private baseUrl: string;
+  async processNotes(options: ProcessNotesOptions): Promise<ProcessedContent> {
+    try {
+      console.log('Processing notes with AI...');
+      
+      const { data, error } = await supabase.functions.invoke('process-notes', {
+        body: options
+      });
 
-  constructor() {
-    // Use the same origin as the frontend since both are served from the same Vite dev server
-    this.baseUrl = '/api';
+      if (error) {
+        console.error('Error calling process-notes function:', error);
+        // Return fallback processing
+        return this.fallbackProcessNotes(options);
+      }
+
+      // If AI failed but we got a fallback response
+      if (data.error && data.fallback) {
+        console.warn('AI processing failed, using fallback:', data.error);
+        return data.fallback;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Failed to process notes:', error);
+      return this.fallbackProcessNotes(options);
+    }
   }
 
   async generateQuestions(options: GenerateQuestionsOptions): Promise<AIResponse> {
     try {
-      console.log('Making request to:', `${this.baseUrl}/tests/generate`);
-      console.log('Request options:', options);
+      console.log('Generating questions with AI...', options);
       
-      const response = await fetch(`${this.baseUrl}/tests/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(options)
+      const { data, error } = await supabase.functions.invoke('generate-questions', {
+        body: options
       });
 
-      console.log('Response status:', response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API error response:', errorText);
-        throw new Error(`API error: ${response.statusText} - ${errorText}`);
+      if (error) {
+        console.error('Error calling generate-questions function:', error);
+        throw new Error(`Failed to generate questions: ${error.message}`);
       }
 
-      const result = await response.json();
-      console.log('AI Service response:', result);
-      return result;
+      return data;
     } catch (error) {
-      console.error('AI question generation failed:', error);
+      console.error('Failed to generate questions:', error);
       throw error;
     }
   }
 
-  async generateFlashcards(content: string, count: number = 10) {
-    try {
-      const response = await fetch(`${this.baseUrl}/tests/flashcards`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ content, count })
-      });
+  private fallbackProcessNotes(options: ProcessNotesOptions): ProcessedContent {
+    const text = options.content || '';
+    const words = text.split(/\s+/).filter(w => w.length > 0);
+    
+    // Simple fallback processing
+    const title = options.fileName?.replace(/\.[^/.]+$/, "") || 'Study Material';
+    const topics = this.extractSimpleTopics(text);
+    const summary = text.substring(0, 200) + (text.length > 200 ? '...' : '');
+    
+    return {
+      text,
+      title,
+      topics,
+      summary,
+      wordCount: words.length,
+      estimatedReadingTime: Math.ceil(words.length / 200)
+    };
+  }
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
+  private extractSimpleTopics(text: string): string[] {
+    // Simple keyword extraction fallback
+    const words = text.toLowerCase().split(/\W+/);
+    const commonWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'should', 'could', 'can', 'may', 'might', 'must', 'shall', 'this', 'that', 'these', 'those']);
+    
+    const wordFreq: Record<string, number> = {};
+    words.forEach(word => {
+      if (word.length > 3 && !commonWords.has(word)) {
+        wordFreq[word] = (wordFreq[word] || 0) + 1;
       }
+    });
+    
+    return Object.entries(wordFreq)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 6)
+      .map(([word]) => word.charAt(0).toUpperCase() + word.slice(1));
+  }
 
-      return await response.json();
-    } catch (error) {
-      console.error('Flashcard generation failed:', error);
-      throw error;
-    }
+  async processFile(file: File): Promise<ProcessedContent> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = async (e) => {
+        try {
+          const result = e.target?.result;
+          if (typeof result === 'string') {
+            // For text files, use the content directly
+            if (file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+              const processed = await this.processNotes({
+                content: result,
+                fileName: file.name,
+                fileType: file.type
+              });
+              resolve(processed);
+            } else {
+              // For other files, send as base64
+              const base64Data = btoa(result);
+              const processed = await this.processNotes({
+                fileData: base64Data,
+                fileName: file.name,
+                fileType: file.type
+              });
+              resolve(processed);
+            }
+          } else {
+            reject(new Error('Failed to read file'));
+          }
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      
+      if (file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+        reader.readAsText(file);
+      } else {
+        reader.readAsDataURL(file);
+      }
+    });
+  }
+
+  // Legacy methods for backwards compatibility
+  async generateFlashcards(content: string, count: number = 10) {
+    // This can be implemented later or kept as a placeholder
+    console.warn('generateFlashcards not yet implemented with new backend');
+    return { flashcards: [] };
   }
 
   async createTest(formData: FormData): Promise<any> {
-    try {
-      const response = await fetch(`${this.baseUrl}/tests`, {
-        method: 'POST',
-        credentials: 'include',
-        body: formData
-      });
-
-      if (!response.ok) {
-        throw new Error(`Test creation failed: ${response.statusText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Test creation failed:', error);
-      throw error;
-    }
+    // This can be implemented later if needed
+    console.warn('createTest not yet implemented with new backend');
+    return {};
   }
 
   async getUserTests(): Promise<any[]> {
-    try {
-      const response = await fetch(`${this.baseUrl}/library`, {
-        method: 'GET',
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch tests: ${response.statusText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to fetch user tests:', error);
-      throw error;
-    }
+    // This can be implemented later if needed
+    console.warn('getUserTests not yet implemented with new backend');
+    return [];
   }
 
   async submitTestResults(testId: string, results: any): Promise<any> {
-    try {
-      const response = await fetch(`${this.baseUrl}/tests/${testId}/results`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(results)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to submit results: ${response.statusText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to submit test results:', error);
-      throw error;
-    }
+    // This can be implemented later if needed
+    console.warn('submitTestResults not yet implemented with new backend');
+    return {};
   }
 }
 
 export const aiService = new AIService();
-export type { GenerateQuestionsOptions, GeneratedQuestion, AIResponse };

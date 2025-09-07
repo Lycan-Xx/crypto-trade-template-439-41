@@ -1,256 +1,211 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Paperclip, PaperclipIcon, Plus } from "lucide-react";
-import { TestWizard } from "@/components/test";
-import { DocumentProcessor } from "@/utils/documentProcessor";
-import { useAuth } from "@/contexts/AuthContext";
-import * as pdfjsLib from "pdfjs-dist";
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { BookOpen, Brain, Target, TrendingUp, Plus } from "lucide-react";
+import { CreateQuizPanel } from "@/components/dashboard/CreateQuizPanel";
+import { TestPreview } from "@/components/test/TestPreview";
+import { useLibraryStore } from "@/stores";
+import type { GeneratedQuestion } from "@/services/aiService";
 
 export default function Dashboard() {
-  // PDF.js worker is now configured in DocumentProcessor.ts
-  // to ensure consistent configuration across the application
+  const [showCreateQuiz, setShowCreateQuiz] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewData, setPreviewData] = useState<{
+    config: any;
+    notes: string;
+    questions: GeneratedQuestion[];
+  } | null>(null);
 
-  const { user } = useAuth();
-  const [notes, setNotes] = useState("");
-  const [showWizard, setShowWizard] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const { savedTests } = useLibraryStore();
 
-  const maxLength = 50000;
-
-  // Trigger the quiz wizard
-  const handleGenerateQuiz = () => {
-    if (!notes.trim()) return;
-    setShowWizard(true);
+  const handleQuizGenerated = (config: any, notes: string, questions: GeneratedQuestion[]) => {
+    setPreviewData({ config, notes, questions });
+    setShowCreateQuiz(false);
+    setShowPreview(true);
   };
 
-  // Programmatically open file input
-  const handleFileUpload = () => {
-    fileInputRef.current?.click();
+  const handlePreviewClose = () => {
+    setShowPreview(false);
+    setPreviewData(null);
   };
 
-  // Handle manual file selection
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) await processFile(file);
-    // Reset input so same file can be uploaded again
-    event.target.value = "";
-  };
+  if (showPreview && previewData) {
+    return (
+      <TestPreview 
+        config={previewData.config}
+        notes={previewData.notes}
+        onClose={handlePreviewClose}
+      />
+    );
+  }
 
-  // Process a single file
-  const processFile = async (file: File) => {
-    const fileName = file.name;
-    try {
-      const documentContent = await DocumentProcessor.processFile(file);
-      if (documentContent) {
-        const separator = `\n\n--- Document Content (${fileName}) ---\n\n`;
-        setNotes(prev => prev.trim() ? `${prev}${separator}${documentContent}` : documentContent);
-      }
-    } catch (error) {
-      console.error(error);
-      alert(error instanceof Error ? error.message : `Failed to process ${fileName}`);
-    }
-  };
-
-  // Drag-and-drop handlers
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!isDragOver) setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
-      setIsDragOver(false);
-    }
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    const supportedFiles = files.filter(file => DocumentProcessor.isSupported(file));
-
-    if (!supportedFiles.length) {
-      console.warn("No supported files found. Please upload .txt, .md, .docx, or .pdf files.");
-      return;
-    }
-
-    await processFile(supportedFiles[0]);
-  };
-
-  // Adjust textarea height dynamically
-  const adjustTextareaHeight = () => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-
-    ta.style.height = "auto";
-    const vw = window.innerWidth || 1024;
-    const vh = window.innerHeight || 800;
-    const minPx = vw < 768 ? 48 : 140;
-    const maxPx = vw < 768 ? Math.round(vh * 0.25) : Math.round(vh * 0.6);
-    const newHeight = Math.max(minPx, Math.min(ta.scrollHeight, maxPx));
-    ta.style.height = `${newHeight}px`;
-  };
-
-  useEffect(() => {
-    adjustTextareaHeight();
-    const onResize = () => adjustTextareaHeight();
-    window.addEventListener("resize", onResize);
-    window.addEventListener("orientationchange", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("orientationchange", onResize);
-    };
-  }, [notes]);
-
-  const handleFocus = () => {
-    if ((window.innerWidth || 1024) < 768) {
-      setTimeout(() => {
-        textareaRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 300);
-    }
-  };
-
-  const [profileInfo, setProfileInfo] = useState({
-    fullName: "",
-  });
-
-  // Load user data when component mounts or user changes
-  useEffect(() => {
-    if (user) {
-      setProfileInfo({
-        fullName: user.user_metadata?.full_name || user.user_metadata?.name || '',
-      });
-    }
-  }, [user]);
+  if (showCreateQuiz) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-studywise-gray-900">Create New Quiz</h1>
+          <Button 
+            variant="outline" 
+            onClick={() => setShowCreateQuiz(false)}
+          >
+            Back to Dashboard
+          </Button>
+        </div>
+        <CreateQuizPanel onQuizGenerated={handleQuizGenerated} />
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full md:h-auto flex flex-col">
-      {!showWizard ? (
-        <>
-          {/* MOBILE */}
-          <div className="md:hidden flex flex-col h-[100dvh] overflow-hidden">
-            <div className="flex-1 flex items-start justify-start pt-12 px-6 pb-32">
-              <h1 className="mx-auto text-[3.6rem] leading-tight font-light text-center">
-                Turn your notes into smart tests
-              </h1>
+    <div className="space-y-8">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-studywise-gray-900 mb-2">Dashboard</h1>
+          <p className="text-studywise-gray-600">Track your learning progress and create new tests</p>
+        </div>
+        <Button 
+          onClick={() => setShowCreateQuiz(true)}
+          size="lg"
+          className="bg-primary hover:bg-primary/90"
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Create New Quiz
+        </Button>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setShowCreateQuiz(true)}>
+          <CardContent className="flex items-center p-6">
+            <div className="rounded-full bg-blue-100 p-3 mr-4">
+              <Plus className="h-6 w-6 text-blue-600" />
             </div>
-
-            <div className="fixed left-4 right-4 bottom-6 z-50 ">
-              <div className={`bg-white rounded-full border flex items-center gap-3 px-4 py-3 ${isDragOver ? 'border-blue-400 bg-blue-50' : 'border-black'}`}>
-                <button onClick={handleFileUpload} className="w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center border border-gray-400">
-                  <Paperclip className="w-6 h-6 text-gray-700" />
-                </button>
-
-                <div className="flex-1 relative">
-                  <textarea
-                    ref={textareaRef}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    onInput={adjustTextareaHeight}
-                    onFocus={handleFocus}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    placeholder={isDragOver ? "Drop your file here..." : "Paste or upload your notes here to get started..."}
-                    maxLength={maxLength}
-                    className={`w-full min-h-[30px] max-h-[36vh] resize-none bg-white 
-	placeholder:text-gray-400 text-base text-gray-900
-	border-none 
-	focus:outline-none 
-	focus:ring-0 
-	focus:border-transparent 
-	outline-0 
-	ring-0 
-	text-center
-	${isDragOver ? 'bg-blue-50' : ''}`}
-                    style={{ textAlign: "center", alignItems: "center", justifyContent: "center" }}
-                  />
-
-                  {/* Optional overlay message */}
-                  {isDragOver && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-blue-100 bg-opacity-50 pointer-events-none rounded-full text-blue-600 text-center">
-                      Drop your file
-                    </div>
-                  )}
-
-                </div>
-
-                <button onClick={handleGenerateQuiz} disabled={!notes.trim()} className={`w-12 h-12 rounded-full border flex items-center justify-center ${notes.trim() ? "bg-primary text-white border-transparent" : "bg-white text-gray-400 border-gray-200 cursor-not-allowed"}`}>
-                  <ArrowUp className="w-6 h-6" />
-                </button>
-              </div>
-              <input ref={fileInputRef} type="file" accept=".txt,.md,.doc,.docx,.pdf" onChange={handleFileChange} className="hidden" />
+            <div>
+              <h3 className="font-semibold text-studywise-gray-900">Create Quiz</h3>
+              <p className="text-sm text-studywise-gray-600">AI-powered question generation</p>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          {/* DESKTOP */}
-          <div className="hidden md:flex flex-col">
-            <div className="flex-shrink-0 p-8 text-center">
-              <h1 className="text-3xl md:text-4xl font-semibold">
-                Welcome {profileInfo.fullName || 'User'}
-              </h1>
-              <h1 className="text-3xl md:text-4xl font-semibold">
-                Transform your study materials into intelligent practice tests that adapt to how you learn
-              </h1>
+        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+          <CardContent className="flex items-center p-6">
+            <div className="rounded-full bg-green-100 p-3 mr-4">
+              <BookOpen className="h-6 w-6 text-green-600" />
             </div>
-            <div className="flex-1 flex justify-center items-center">
-              <div className="w-full max-w-3xl px-8">
-                <div className={`bg-white rounded-2xl border border-black shadow-sm p-6 relative ${isDragOver ? 'bg-blue-50 border-blue-400' : ''}`}>
-                  <div className="flex items-start gap-4">
-                    <button onClick={handleFileUpload} className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center border border-gray-100">
-                      <Paperclip className="w-6 h-6 text-gray-600" />
-                    </button>
+            <div>
+              <h3 className="font-semibold text-studywise-gray-900">My Library</h3>
+              <p className="text-sm text-studywise-gray-600">View saved tests and materials</p>
+            </div>
+          </CardContent>
+        </Card>
 
-                    <div className="flex-1 relative">
-                      <textarea
-                        ref={textareaRef}
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        onInput={adjustTextareaHeight}
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
-                        placeholder={isDragOver ? "Drop your document here..." : "Paste or upload your study notes, textbook content, or lecture materials here..."}
-                        maxLength={maxLength}
-                        className={`w-full min-h-[140px] md:min-h-[180px] max-h-[60vh] resize-none
-                          bg-transparent placeholder:text-gray-400 text-gray-900 px-2 py-1 pr-20
-                          outline-none focus:outline-none focus:ring-0
-                          
-                          ${isDragOver ? 'bg-blue-50 border border-blue-400 rounded-xl' : ''}`}
-                      />
-                      {/* Overlay for drag feedback */}
-                      {isDragOver && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-blue-100 bg-opacity-50 pointer-events-none rounded-2xl text-blue-600 text-center">
-                          Drop your document here
-                        </div>
-                      )}
-                      <div className="absolute bottom-2 right-2 text-sm text-gray-500 bg-white px-2 py-1 rounded">
-                        {notes.length.toLocaleString()}/{maxLength.toLocaleString()}
-                      </div>
-                    </div>
+        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+          <CardContent className="flex items-center p-6">
+            <div className="rounded-full bg-purple-100 p-3 mr-4">
+              <Target className="h-6 w-6 text-purple-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-studywise-gray-900">Results</h3>
+              <p className="text-sm text-studywise-gray-600">Track your performance</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Tests</CardTitle>
+            <BookOpen className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{savedTests.length}</div>
+            <p className="text-xs text-muted-foreground">
+              +2 from last month
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Average Score</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">85%</div>
+            <p className="text-xs text-muted-foreground">
+              +5% from last month
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Study Streak</CardTitle>
+            <Brain className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">12 days</div>
+            <p className="text-xs text-muted-foreground">
+              Keep it up!
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Improvement</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">+12%</div>
+            <p className="text-xs text-muted-foreground">
+              From first test
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Activity */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Tests</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {savedTests.length === 0 ? (
+            <Card className="text-center py-12">
+              <CardContent>
+                <BookOpen className="h-12 w-12 text-studywise-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-studywise-gray-900 mb-2">No quizzes yet</h3>
+                <p className="text-studywise-gray-600 mb-6">
+                  Create your first AI-powered quiz to get started with personalized learning
+                </p>
+                <Button onClick={() => setShowCreateQuiz(true)} size="lg">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Your First Quiz
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {savedTests.slice(0, 5).map((test) => (
+                <div key={test.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <h4 className="font-medium">{test.title}</h4>
+                    <p className="text-sm text-muted-foreground">{test.questionCount} questions</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <Progress value={75} className="w-24" />
+                    <span className="text-sm font-medium">75%</span>
                   </div>
                 </div>
-                <div className="flex justify-end mt-4">
-                  <button onClick={handleGenerateQuiz} disabled={!notes.trim()} className={`h-12 px-4 rounded-xl flex items-center gap-2 ${notes.trim() ? "bg-primary text-white border-transparent" : "bg-white text-gray-400 border border-gray-200 cursor-not-allowed"}`}>
-                    <ArrowUp className="w-4 h-4" />
-                    <span className="hidden lg:inline">Generate</span>
-                  </button>
-                </div>
-                <input ref={fileInputRef} type="file" accept=".txt,.md,.doc,.docx,.pdf" onChange={handleFileChange} className="hidden" />
-              </div>
+              ))}
             </div>
-          </div>
-        </>
-      ) : (
-        <TestWizard notes={notes} onClose={() => setShowWizard(false)} />
-      )}
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
