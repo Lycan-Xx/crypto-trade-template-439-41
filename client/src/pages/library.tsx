@@ -236,21 +236,20 @@ export default function Library() {
   // Show NotePreview if a test note is selected for editing
   if (selectedTestData) {
     return (
-      <NotePreview
-        testId={selectedTestData.id}
-        title={selectedTestData.title}
-        subject={selectedTestData.subject}
-        initialNotes={selectedTestData.notes}
-        highlightText={highlightText}
-        onClose={() => {
-          setSelectedTest(null);
-          setHighlightText(null);
-        }}
-        onSave={handleSaveNotes}
-        onSubmit={handleTestSubmit}
-        onShowResults={handleShowResults}
-        onStartTest={handleStartTest}
-      />
+        <NotePreview
+          testId={selectedTestData.id}
+          title={selectedTestData.title}
+          initialNotes={selectedTestData.notes}
+          highlightText={highlightText}
+          onClose={() => {
+            setSelectedTest(null);
+            setHighlightText(null);
+          }}
+          onSave={handleSaveNotes}
+          onSubmit={handleTestSubmit}
+          onShowResults={handleShowResults}
+          onStartTest={handleStartTest}
+        />
     );
   }
 

@@ -19,7 +19,6 @@ import { useTestSessionStore } from "@/stores";
 interface NotePreviewProps {
   testId: string;
   title: string;
-  subject: string;
   initialNotes: string;
   highlightText?: string | null;
   onClose: () => void;
@@ -29,7 +28,7 @@ interface NotePreviewProps {
   onStartTest?: (testId: string) => void;
 }
 
-export function NotePreview({ testId, title, subject, initialNotes, highlightText, onClose, onSave, onStartTest }: NotePreviewProps) {
+export function NotePreview({ testId, title, initialNotes, highlightText, onClose, onSave, onSubmit, onShowResults, onStartTest }: NotePreviewProps) {
   const [notes, setNotes] = useState(initialNotes);
   const [showWizard, setShowWizard] = useState(false);
   // const [showResumeTest, setShowResumeTest] = useState(false);

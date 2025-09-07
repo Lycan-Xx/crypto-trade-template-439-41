@@ -46,7 +46,7 @@ interface ValidationResult {
 }
 
 class AIService {
-  private genAI: GoogleGenerativeAI;
+  private genAI: GoogleGenerativeAI | null;
   private proModel: any;
   private flashModel: any;
   private cache = new Map<string, { data: AIResponse; timestamp: number; expiresAt: number }>();
@@ -125,7 +125,8 @@ class AIService {
       return this.processGeneratedQuestions(parsedResponse, options);
     } catch (error) {
       console.error('Gemini Pro generation failed:', error);
-      throw new Error(`Gemini Pro API error: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Gemini Pro API error: ${msg}`);
     }
   }
 
@@ -421,11 +422,11 @@ Respond with JSON:
   // Cleanup old cache entries periodically
   private cleanupCache(): void {
     const now = Date.now();
-    for (const [key, value] of this.cache.entries()) {
+    this.cache.forEach((value, key) => {
       if (now > value.expiresAt) {
         this.cache.delete(key);
       }
-    }
+    });
   }
 }
 

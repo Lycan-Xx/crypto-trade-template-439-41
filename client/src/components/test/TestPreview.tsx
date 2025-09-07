@@ -132,6 +132,7 @@ export function TestPreview({ config, notes, onClose }: TestPreviewProps) {
         correctAnswers={currentResult.correctAnswers}
         notes={notes}
         onRetake={handleRetake}
+        onBackToLibrary={handleResultsBack}
       />
     );
   }
